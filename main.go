@@ -1,56 +1,87 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"os"
+	"os/exec"
 
-	"github.com/ItsJimi/gif/pkg/convert"
 	"github.com/TheZoraiz/ascii-image-converter/aic_package"
 	"github.com/kkdai/youtube/v2"
+	"github.com/schollz/progressbar/v3"
 )
 
 func main() {
-	entries, err := os.ReadDir(".\\video")
+	entries, err := os.ReadDir("./")
 	if err != nil {
 		panic(err)
 	}
-	if len(entries) == 0 {
+	isVideoFile := false
+	isTextFile := false
+	isImageFile := false
+	for _, entry := range entries {
+		if entry.Name() == "video" {
+			isVideoFile = true
+		} else if entry.Name() == "images" {
+			isImageFile = true
+		} else if entry.Name() == "text" {
+			isTextFile = true
+		}
+	}
+	if !isVideoFile {
+		os.Mkdir("./video", os.ModePerm)
+	} else if !isImageFile {
+		os.Mkdir("./images", os.ModePerm)
+	} else if !isTextFile {
+		os.Mkdir("./text", os.ModePerm)
+	}
+	isVideo, err := os.ReadDir("./video")
+	if err != nil {
+		panic(err)
+	}
+	if len(isVideo) == 0 {
 		downloadVideo()
 	}
-	inpath := ".\\video"
-	outpath := ".\\gif"
-	convertMp4ToPng(inpath, outpath)
-	inpath = ".\\gif\\*.gif"
-	generateAscii(inpath)
-}
-
-func convertMp4ToPng(inpath string, outpath string) {
-	options := convert.Options{
-		FPS:   10,
-		Scale: -1,
-		Crop:  "",
-	}
-
-	err := convert.FromFolder(inpath, outpath, options)
+	imagePath := "./images"
+	videoPath := "./video/rick.mp4"
+	isImage, err := os.ReadDir(imagePath)
 	if err != nil {
 		panic(err)
 	}
+	if len(isImage) == 0 {
+		ffmpegConvert(videoPath, imagePath)
+	}
+	textPath := "./text"
+	imageList, err := os.ReadDir(imagePath)
+	if err != nil {
+		panic(err)
+	}
+	bar := progressbar.Default(int64(len(imageList)))
+	for _, image := range imageList {
+		generateAscii(imagePath+"/"+image.Name(), textPath)
+		bar.Add(1)
+	}
 }
 
-func generateAscii(path string) {
+func ffmpegConvert(inpath string, outpath string) {
+	print("Converting video to images...")
+	cmd := exec.Command("ffmpeg", "-threads 4", "-i", inpath, "-vf", "fps=20", outpath+"/%d.png")
+	err := cmd.Run()
+	if err != nil {
+		panic(err)
+	}
+	print("\tDone!\n")
+}
+
+func generateAscii(inpath string, outpath string) {
 	flags := aic_package.DefaultFlags()
 	flags.Dimensions = []int{100, 50}
-	flags.Colored = true
-	flags.SaveTxtPath = "."
-	flags.SaveImagePath = "."
+	flags.SaveTxtPath = outpath
 	flags.Braille = true
 	flags.SaveBackgroundColor = [4]int{50, 50, 50, 100}
-	asciiArt, err := aic_package.Convert(path, flags)
+	_, err := aic_package.Convert(inpath, flags)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("%v\n", asciiArt)
 }
 
 func downloadVideo() {
@@ -65,7 +96,7 @@ func downloadVideo() {
 		panic(err)
 	}
 	defer stream.Close()
-	file, err := os.Create(".\\video\\rick.mp4")
+	file, err := os.Create("./video/rick.mp4")
 	if err != nil {
 		panic(err)
 	}
